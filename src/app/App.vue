@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import {
   BookOpen,
   ChevronRight,
@@ -10,12 +10,14 @@ import {
   Bookmark,
   Cloud,
   PanelLeftClose,
+  Columns2,
 } from "lucide-vue-next";
 import { LibraryPanel } from "../features/library";
 import { ChapterPanel } from "../features/chapters";
 import { ReaderStage, PanelStrip } from "../features/reader";
 import { AudioPanel } from "../features/audio";
 import { ProgressPanel } from "../features/progress";
+import { CompareWorkspace, redraftDocument } from "../features/compare";
 import { useWorkspace } from "./workspace";
 const {
   doc,
@@ -32,6 +34,21 @@ const current = r.current,
   bookmarks = p.bookmarks,
   status = p.status,
   cue = a.cue;
+const view = ref<"reader" | "compare">("reader");
+const redraft = computed(() => redraftDocument(doc.value));
+const originalPageIds = computed(() =>
+  new Set(doc.value.chapters.flatMap((c) => c.pages.map((p) => p.id))),
+);
+const originalBookmarks = computed(() =>
+  bookmarks.value.filter((b) => originalPageIds.value.has(b.location.pageId)),
+);
+function addMigrated(marks: typeof bookmarks.value) {
+  for (const m of marks)
+    if (!bookmarks.value.some((b) => b.id === m.id)) bookmarks.value.push(m);
+}
+function removeMigrated(ids: string[]) {
+  bookmarks.value = bookmarks.value.filter((b) => !ids.includes(b.id));
+}
 const chapterIndex = computed(
   () => doc.value.chapters.findIndex((c) => c.id === at.value.chapterId) + 1,
 );
@@ -54,11 +71,14 @@ function focus(id: string) {
         ><span class="preview-tag">正在阅读</span>
       </nav>
       <div class="header-right">
+        <button class="compare-entry" @click="view = 'compare'">
+          <Columns2 :size="14" /> 双版本对照
+        </button>
         <Cloud :size="15" /><span>本地已就绪</span>
         <div class="avatar">林</div>
       </div>
     </header>
-    <div class="workspace">
+    <div class="workspace" v-if="view === 'reader'">
       <aside class="left-sidebar">
         <div class="book-cover">
           <img :src="doc.chapters[0]?.pages[0]?.image" alt="雨停之前漫画封面" />
@@ -181,6 +201,15 @@ function focus(id: string) {
         </div>
       </aside>
     </div>
+    <CompareWorkspace
+      v-else
+      :original="doc"
+      :redraft="redraft"
+      :original-bookmarks="originalBookmarks"
+      @exit="view = 'reader'"
+      @add-migrated="addMigrated"
+      @remove-migrated="removeMigrated"
+    />
     <footer class="app-footer">
       <span><i></i> 所有故事，都有回声。</span
       ><span>PANEL · 为每一格想象而生</span
